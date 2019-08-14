@@ -74,6 +74,7 @@ typedef struct obs_weak_service obs_weak_service_t;
 #include "obs-service.h"
 #include "obs-audio-controls.h"
 #include "obs-hotkey.h"
+#include <util\config-file.h>
 
 /**
  * @file
@@ -1614,7 +1615,7 @@ EXPORT const char *obs_output_get_display_name(const char *id);
  */
 EXPORT obs_output_t *obs_output_create(const char *id, const char *name,
 				       obs_data_t *settings,
-				       obs_data_t *hotkey_data);
+				       obs_data_t *hotkey_data, config_t* config);
 
 /**
  * Adds/releases a reference to an output.  When the last reference is

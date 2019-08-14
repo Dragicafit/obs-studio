@@ -81,6 +81,7 @@ static inline bool pop_packet(struct obs_output *output, uint64_t t)
 	uint64_t elapsed_time;
 	struct delay_data dd;
 	bool popped = false;
+	bool del = false;
 	bool preserve;
 
 	/* ------------------------------------------------ */
@@ -93,9 +94,20 @@ static inline bool pop_packet(struct obs_output *output, uint64_t t)
 		circlebuf_peek_front(&output->delay_data, &dd, sizeof(dd));
 		elapsed_time = (t - dd.ts);
 
+		output->delay_sec =
+			config_get_int(output->config, "Output", "DelaySec");
+		output->active_delay_ns =
+			(uint64_t)output->delay_sec * 1000000000ULL;
+
 		if (preserve && output->reconnecting) {
 			output->active_delay_ns = elapsed_time;
 
+		} else if (elapsed_time > output->active_delay_ns +
+						  1000000000ULL &&
+			   dd.msg == DELAY_MSG_PACKET) {
+			circlebuf_pop_front(&output->delay_data, NULL,
+					    sizeof(dd));
+			del = true;
 		} else if (elapsed_time > output->active_delay_ns) {
 			circlebuf_pop_front(&output->delay_data, NULL,
 					    sizeof(dd));
@@ -110,7 +122,7 @@ static inline bool pop_packet(struct obs_output *output, uint64_t t)
 	if (popped)
 		process_delay_data(output, &dd);
 
-	return popped;
+	return popped || del;
 }
 
 void process_delay(void *data, struct encoder_packet *packet)

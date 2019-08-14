@@ -276,8 +276,8 @@ void AutoConfigTestPage::TestBandwidthThread()
 	if (!output_type)
 		output_type = "rtmp_output";
 
-	OBSOutput output =
-		obs_output_create(output_type, "test_stream", nullptr, nullptr);
+	OBSOutput output = obs_output_create(output_type, "test_stream",
+					     nullptr, nullptr, main->Config());
 	obs_output_release(output);
 	obs_output_update(output, output_settings);
 
@@ -527,8 +527,8 @@ bool AutoConfigTestPage::TestSoftwareEncoding()
 						       nullptr, nullptr);
 	OBSEncoder aencoder = obs_audio_encoder_create("ffmpeg_aac", "test_aac",
 						       nullptr, 0, nullptr);
-	OBSOutput output =
-		obs_output_create("null_output", "null", nullptr, nullptr);
+	OBSOutput output = obs_output_create("null_output", "null", nullptr,
+					     nullptr, nullptr);
 	obs_output_release(output);
 	obs_encoder_release(vencoder);
 	obs_encoder_release(aencoder);

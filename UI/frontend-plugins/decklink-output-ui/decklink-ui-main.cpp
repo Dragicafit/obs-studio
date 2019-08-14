@@ -59,7 +59,7 @@ void output_start()
 		if (settings != nullptr) {
 			output = obs_output_create("decklink_output",
 						   "decklink_output", settings,
-						   NULL);
+						   NULL, NULL);
 
 			obs_output_start(output);
 			obs_data_release(settings);
@@ -105,7 +105,7 @@ void preview_output_start()
 		if (settings != nullptr) {
 			context.output = obs_output_create(
 				"decklink_output", "decklink_preview_output",
-				settings, NULL);
+				settings, NULL, NULL);
 
 			obs_get_video_info(&context.ovi);
 

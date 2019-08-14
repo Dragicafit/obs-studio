@@ -250,7 +250,7 @@ struct SimpleOutput : BasicOutputHandler {
 void SimpleOutput::LoadRecordingPreset_Lossless()
 {
 	fileOutput = obs_output_create("ffmpeg_output", "simple_ffmpeg_output",
-				       nullptr, nullptr);
+				       nullptr, nullptr, main->Config());
 	if (!fileOutput)
 		throw "Failed to create recording FFmpeg output "
 		      "(simple output)";
@@ -370,7 +370,8 @@ SimpleOutput::SimpleOutput(OBSBasic *main_) : BasicOutputHandler(main_)
 			obs_data_t *hotkey = obs_data_create_from_json(str);
 			replayBuffer = obs_output_create("replay_buffer",
 							 Str("ReplayBuffer"),
-							 nullptr, hotkey);
+							 nullptr, hotkey,
+							 main->Config());
 
 			obs_data_release(hotkey);
 			if (!replayBuffer)
@@ -390,8 +391,9 @@ SimpleOutput::SimpleOutput(OBSBasic *main_) : BasicOutputHandler(main_)
 						     this);
 		}
 
-		fileOutput = obs_output_create(
-			"ffmpeg_muxer", "simple_file_output", nullptr, nullptr);
+		fileOutput = obs_output_create("ffmpeg_muxer",
+					       "simple_file_output", nullptr,
+					       nullptr, main->Config());
 		if (!fileOutput)
 			throw "Failed to create recording output "
 			      "(simple output)";
@@ -700,7 +702,7 @@ bool SimpleOutput::StartStreaming(obs_service_t *service)
 		stopStreaming.Disconnect();
 
 		streamOutput = obs_output_create(type, "simple_stream", nullptr,
-						 nullptr);
+						 nullptr, main->Config());
 		if (!streamOutput) {
 			blog(LOG_WARNING,
 			     "Creation of stream output type '%s' "
@@ -1136,8 +1138,9 @@ AdvancedOutput::AdvancedOutput(OBSBasic *main_) : BasicOutputHandler(main_)
 		      astrcmpi(rate_control, "ABR") == 0;
 
 	if (ffmpegOutput) {
-		fileOutput = obs_output_create(
-			"ffmpeg_output", "adv_ffmpeg_output", nullptr, nullptr);
+		fileOutput = obs_output_create("ffmpeg_output",
+					       "adv_ffmpeg_output", nullptr,
+					       nullptr, main->Config());
 		if (!fileOutput)
 			throw "Failed to create recording FFmpeg output "
 			      "(advanced output)";
@@ -1151,7 +1154,8 @@ AdvancedOutput::AdvancedOutput(OBSBasic *main_) : BasicOutputHandler(main_)
 			obs_data_t *hotkey = obs_data_create_from_json(str);
 			replayBuffer = obs_output_create("replay_buffer",
 							 Str("ReplayBuffer"),
-							 nullptr, hotkey);
+							 nullptr, hotkey,
+							 main->Config());
 
 			obs_data_release(hotkey);
 			if (!replayBuffer)
@@ -1171,8 +1175,9 @@ AdvancedOutput::AdvancedOutput(OBSBasic *main_) : BasicOutputHandler(main_)
 						     this);
 		}
 
-		fileOutput = obs_output_create(
-			"ffmpeg_muxer", "adv_file_output", nullptr, nullptr);
+		fileOutput = obs_output_create("ffmpeg_muxer",
+					       "adv_file_output", nullptr,
+					       nullptr, main->Config());
 		if (!fileOutput)
 			throw "Failed to create recording output "
 			      "(advanced output)";
@@ -1514,8 +1519,8 @@ bool AdvancedOutput::StartStreaming(obs_service_t *service)
 		startStreaming.Disconnect();
 		stopStreaming.Disconnect();
 
-		streamOutput =
-			obs_output_create(type, "adv_stream", nullptr, nullptr);
+		streamOutput = obs_output_create(type, "adv_stream", nullptr,
+						 nullptr, main->Config());
 		if (!streamOutput) {
 			blog(LOG_WARNING,
 			     "Creation of stream output type '%s' "

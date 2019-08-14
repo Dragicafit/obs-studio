@@ -35,6 +35,7 @@
 #include "media-io/audio-io.h"
 
 #include "obs.h"
+#include <util\config-file.h>
 
 #define NUM_TEXTURES 2
 #define NUM_CHANNELS 3
@@ -946,6 +947,7 @@ struct obs_output {
 	char *last_error_message;
 
 	float audio_data[MAX_AUDIO_CHANNELS][AUDIO_OUTPUT_FRAMES];
+	config_t *config;
 };
 
 static inline void do_output_signal(struct obs_output *output,

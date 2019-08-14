@@ -97,7 +97,7 @@ static bool init_output_handlers(struct obs_output *output, const char *name,
 }
 
 obs_output_t *obs_output_create(const char *id, const char *name,
-				obs_data_t *settings, obs_data_t *hotkey_data)
+				obs_data_t *settings, obs_data_t *hotkey_data, config_t* config)
 {
 	const struct obs_output_info *info = find_output(id);
 	struct obs_output *output;
@@ -123,6 +123,7 @@ obs_output_t *obs_output_create(const char *id, const char *name,
 		goto fail;
 
 	os_event_signal(output->stopping_event);
+	output->config = config;
 
 	if (!info) {
 		blog(LOG_ERROR, "Output ID '%s' not found", id);
