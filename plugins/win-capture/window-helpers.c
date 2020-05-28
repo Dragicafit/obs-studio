@@ -2,8 +2,9 @@
 #include <obs.h>
 #include <util/dstr.h>
 
-#include <windows.h>
+#include <dwmapi.h>
 #include <psapi.h>
+#include <windows.h>
 #include "window-helpers.h"
 #include "obfuscate.h"
 
@@ -126,14 +127,29 @@ void get_window_class(struct dstr *class, HWND hwnd)
 		dstr_from_wcs(class, temp);
 }
 
-/* not capturable or internal windows */
-static const char *internal_microsoft_exes[] = {
-	"applicationframehost",
-	"shellexperiencehost",
+/* not capturable or internal windows, exact executable names */
+static const char *internal_microsoft_exes_exact[] = {
+	"startmenuexperiencehost.exe",
+	"applicationframehost.exe",
+	"peopleexperiencehost.exe",
+	"shellexperiencehost.exe",
+	"microsoft.notes.exe",
+	"systemsettings.exe",
+	"textinputhost.exe",
+	"searchapp.exe",
+	"video.ui.exe",
+	"searchui.exe",
+	"lockapp.exe",
+	"cortana.exe",
+	"gamebar.exe",
+	"tabtip.exe",
+	"time.exe",
+	NULL,
+};
+
+/* partial matches start from the beginning of the executable name */
+static const char *internal_microsoft_exes_partial[] = {
 	"windowsinternal",
-	"winstore.app",
-	"searchui",
-	"lockapp",
 	NULL,
 };
 
@@ -142,7 +158,13 @@ static bool is_microsoft_internal_window_exe(const char *exe)
 	if (!exe)
 		return false;
 
-	for (const char **vals = internal_microsoft_exes; *vals; vals++) {
+	for (const char **vals = internal_microsoft_exes_exact; *vals; vals++) {
+		if (astrcmpi(exe, *vals) == 0)
+			return true;
+	}
+
+	for (const char **vals = internal_microsoft_exes_partial; *vals;
+	     vals++) {
 		if (astrcmpi_n(exe, *vals, strlen(*vals)) == 0)
 			return true;
 	}
@@ -412,4 +434,59 @@ HWND find_window(enum window_search_mode mode, enum window_priority priority,
 	}
 
 	return best_window;
+}
+
+struct top_level_enum_data {
+	enum window_search_mode mode;
+	enum window_priority priority;
+	const char *class;
+	const char *title;
+	const char *exe;
+	bool uwp_window;
+	HWND best_window;
+	int best_rating;
+};
+
+BOOL CALLBACK enum_windows_proc(HWND window, LPARAM lParam)
+{
+	struct top_level_enum_data *data = (struct top_level_enum_data *)lParam;
+
+	if (!check_window_valid(window, data->mode))
+		return TRUE;
+
+	int cloaked;
+	if (SUCCEEDED(DwmGetWindowAttribute(window, DWMWA_CLOAKED, &cloaked,
+					    sizeof(cloaked))) &&
+	    cloaked)
+		return TRUE;
+
+	const int rating = window_rating(window, data->priority, data->class,
+					 data->title, data->exe,
+					 data->uwp_window);
+	if (rating < data->best_rating) {
+		data->best_rating = rating;
+		data->best_window = window;
+	}
+
+	return rating > 0;
+}
+
+HWND find_window_top_level(enum window_search_mode mode,
+			   enum window_priority priority, const char *class,
+			   const char *title, const char *exe)
+{
+	if (!class)
+		return NULL;
+
+	struct top_level_enum_data data;
+	data.mode = mode;
+	data.priority = priority;
+	data.class = class;
+	data.title = title;
+	data.exe = exe;
+	data.uwp_window = strcmp(class, "Windows.UI.Core.CoreWindow") == 0;
+	data.best_window = NULL;
+	data.best_rating = 0x7FFFFFFF;
+	EnumWindows(enum_windows_proc, (LPARAM)&data);
+	return data.best_window;
 }

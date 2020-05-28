@@ -34,6 +34,7 @@
 #include <QGuiApplication>
 #include <QProxyStyle>
 #include <QScreen>
+#include <QProcess>
 
 #include "qt-wrappers.hpp"
 #include "obs-app.hpp"
@@ -48,6 +49,7 @@
 
 #ifdef _WIN32
 #include <windows.h>
+#include <filesystem>
 #else
 #include <signal.h>
 #include <pthread.h>
@@ -83,6 +85,8 @@ string opt_starting_scene;
 bool remuxAfterRecord = false;
 string remuxFilename;
 
+bool restart = false;
+
 // GPU hint exports for AMD/NVIDIA laptops
 #ifdef _MSC_VER
 extern "C" __declspec(dllexport) DWORD NvOptimusEnablement = 1;
@@ -93,6 +97,10 @@ QObject *CreateShortcutFilter()
 {
 	return new OBSEventFilter([](QObject *obj, QEvent *event) {
 		auto mouse_event = [](QMouseEvent &event) {
+			if (!App()->HotkeysEnabledInFocus() &&
+			    event.button() != Qt::LeftButton)
+				return true;
+
 			obs_key_combination_t hotkey = {0, OBS_KEY_NONE};
 			bool pressed = event.type() == QEvent::MouseButtonPress;
 
@@ -147,6 +155,9 @@ QObject *CreateShortcutFilter()
 		};
 
 		auto key_event = [&](QKeyEvent *event) {
+			if (!App()->HotkeysEnabledInFocus())
+				return true;
+
 			QDialog *dialog = qobject_cast<QDialog *>(obj);
 
 			obs_key_combination_t hotkey = {0, OBS_KEY_NONE};
@@ -418,6 +429,8 @@ bool OBSApp::InitGlobalConfigDefaults()
 				"ShowListboxToolbars", true);
 	config_set_default_bool(globalConfig, "BasicWindow", "ShowStatusBar",
 				true);
+	config_set_default_bool(globalConfig, "BasicWindow", "ShowSourceIcons",
+				true);
 	config_set_default_bool(globalConfig, "BasicWindow", "StudioModeLabels",
 				true);
 
@@ -425,6 +438,9 @@ bool OBSApp::InitGlobalConfigDefaults()
 		config_set_default_string(globalConfig, "General",
 					  "CurrentTheme", DEFAULT_THEME);
 	}
+
+	config_set_default_string(globalConfig, "General", "HotkeyFocusType",
+				  "NeverDisableHotkeys");
 
 	config_set_default_bool(globalConfig, "BasicWindow",
 				"VerticalVolControl", false);
@@ -693,9 +709,10 @@ bool OBSApp::InitGlobalConfig()
 		}
 	}
 
+	uint32_t lastVersion =
+		config_get_int(globalConfig, "General", "LastVersion");
+
 	if (!config_has_user_value(globalConfig, "General", "Pre19Defaults")) {
-		uint32_t lastVersion =
-			config_get_int(globalConfig, "General", "LastVersion");
 		bool useOldDefaults = lastVersion &&
 				      lastVersion <
 					      MAKE_SEMANTIC_VERSION(19, 0, 0);
@@ -706,8 +723,6 @@ bool OBSApp::InitGlobalConfig()
 	}
 
 	if (!config_has_user_value(globalConfig, "General", "Pre21Defaults")) {
-		uint32_t lastVersion =
-			config_get_int(globalConfig, "General", "LastVersion");
 		bool useOldDefaults = lastVersion &&
 				      lastVersion <
 					      MAKE_SEMANTIC_VERSION(21, 0, 0);
@@ -718,8 +733,6 @@ bool OBSApp::InitGlobalConfig()
 	}
 
 	if (!config_has_user_value(globalConfig, "General", "Pre23Defaults")) {
-		uint32_t lastVersion =
-			config_get_int(globalConfig, "General", "LastVersion");
 		bool useOldDefaults = lastVersion &&
 				      lastVersion <
 					      MAKE_SEMANTIC_VERSION(23, 0, 0);
@@ -729,11 +742,33 @@ bool OBSApp::InitGlobalConfig()
 		changed = true;
 	}
 
+#define PRE_24_1_DEFS "Pre24.1Defaults"
+	if (!config_has_user_value(globalConfig, "General", PRE_24_1_DEFS)) {
+		bool useOldDefaults = lastVersion &&
+				      lastVersion <
+					      MAKE_SEMANTIC_VERSION(24, 1, 0);
+
+		config_set_bool(globalConfig, "General", PRE_24_1_DEFS,
+				useOldDefaults);
+		changed = true;
+	}
+#undef PRE_24_1_DEFS
+
 	if (config_has_user_value(globalConfig, "BasicWindow",
 				  "MultiviewLayout")) {
 		const char *layout = config_get_string(
 			globalConfig, "BasicWindow", "MultiviewLayout");
 		changed |= UpdatePre22MultiviewLayout(layout);
+	}
+
+	if (lastVersion && lastVersion < MAKE_SEMANTIC_VERSION(24, 0, 0)) {
+		bool disableHotkeysInFocus = config_get_bool(
+			globalConfig, "General", "DisableHotkeysInFocus");
+		if (disableHotkeysInFocus)
+			config_set_string(globalConfig, "General",
+					  "HotkeyFocusType",
+					  "DisableHotkeysInFocus");
+		changed = true;
 	}
 
 	if (changed)
@@ -1043,21 +1078,27 @@ bool OBSApp::InitTheme()
 	defaultPalette = palette();
 
 	const char *themeName =
-		config_get_string(globalConfig, "General", "CurrentTheme");
+		config_get_string(globalConfig, "General", "CurrentTheme2");
 
-	if (!themeName) {
+	if (!themeName)
+		/* Use deprecated "CurrentTheme" value if available */
+		themeName = config_get_string(globalConfig, "General",
+					      "CurrentTheme");
+	if (!themeName)
 		/* Use deprecated "Theme" value if available */
 		themeName = config_get_string(globalConfig, "General", "Theme");
-		if (!themeName)
-			themeName = DEFAULT_THEME;
-		if (!themeName)
-			themeName = "Dark";
-	}
+	if (!themeName)
+		themeName = DEFAULT_THEME;
+	if (!themeName)
+		themeName = "Dark";
 
 	if (strcmp(themeName, "Default") == 0)
 		themeName = "System";
 
-	return SetTheme(themeName);
+	if (strcmp(themeName, "System") != 0 && SetTheme(themeName))
+		return true;
+
+	return SetTheme("System");
 }
 
 OBSApp::OBSApp(int &argc, char **argv, profiler_name_store_t *store)
@@ -1221,8 +1262,7 @@ void OBSApp::AppInit()
 		EnableOSXVSync(false);
 #endif
 
-	enableHotkeysInFocus = !config_get_bool(globalConfig, "General",
-						"DisableHotkeysInFocus");
+	UpdateHotkeyFocusSetting(false);
 
 	move_basic_to_profiles();
 	move_basic_to_scene_collections();
@@ -1251,13 +1291,34 @@ static bool StartupOBS(const char *locale, profiler_name_store_t *store)
 
 inline void OBSApp::ResetHotkeyState(bool inFocus)
 {
-	obs_hotkey_enable_background_press(inFocus || enableHotkeysInFocus);
+	obs_hotkey_enable_background_press(
+		(inFocus && enableHotkeysInFocus) ||
+		(!inFocus && enableHotkeysOutOfFocus));
 }
 
-void OBSApp::EnableInFocusHotkeys(bool enable)
+void OBSApp::UpdateHotkeyFocusSetting(bool resetState)
 {
-	enableHotkeysInFocus = enable;
-	ResetHotkeyState(applicationState() != Qt::ApplicationActive);
+	enableHotkeysInFocus = true;
+	enableHotkeysOutOfFocus = true;
+
+	const char *hotkeyFocusType =
+		config_get_string(globalConfig, "General", "HotkeyFocusType");
+
+	if (astrcmpi(hotkeyFocusType, "DisableHotkeysInFocus") == 0) {
+		enableHotkeysInFocus = false;
+	} else if (astrcmpi(hotkeyFocusType, "DisableHotkeysOutOfFocus") == 0) {
+		enableHotkeysOutOfFocus = false;
+	}
+
+	if (resetState)
+		ResetHotkeyState(applicationState() == Qt::ApplicationActive);
+}
+
+void OBSApp::DisableHotkeys()
+{
+	enableHotkeysInFocus = false;
+	enableHotkeysOutOfFocus = false;
+	ResetHotkeyState(applicationState() == Qt::ApplicationActive);
 }
 
 Q_DECLARE_METATYPE(VoidFunc)
@@ -1265,6 +1326,17 @@ Q_DECLARE_METATYPE(VoidFunc)
 void OBSApp::Exec(VoidFunc func)
 {
 	func();
+}
+
+static void ui_task_handler(obs_task_t task, void *param, bool wait)
+{
+	auto doTask = [=]() {
+		/* to get clang-format to behave */
+		task(param);
+	};
+	QMetaObject::invokeMethod(App(), "Exec",
+				  wait ? WaitConnection() : Qt::AutoConnection,
+				  Q_ARG(VoidFunc, doTask));
 }
 
 bool OBSApp::OBSInit()
@@ -1277,6 +1349,8 @@ bool OBSApp::OBSInit()
 
 	if (!StartupOBS(locale.c_str(), GetProfilerNameStore()))
 		return false;
+
+	obs_set_ui_task_handler(ui_task_handler);
 
 #ifdef _WIN32
 	bool browserHWAccel =
@@ -1307,9 +1381,9 @@ bool OBSApp::OBSInit()
 
 	connect(this, &QGuiApplication::applicationStateChanged,
 		[this](Qt::ApplicationState state) {
-			ResetHotkeyState(state != Qt::ApplicationActive);
+			ResetHotkeyState(state == Qt::ApplicationActive);
 		});
-	ResetHotkeyState(applicationState() != Qt::ApplicationActive);
+	ResetHotkeyState(applicationState() == Qt::ApplicationActive);
 	return true;
 }
 
@@ -1703,7 +1777,15 @@ static int run_program(fstream &logFile, int argc, char *argv[])
 	QGuiApplication::setAttribute(Qt::AA_EnableHighDpiScaling);
 #endif
 
+#if !defined(_WIN32) && !defined(__APPLE__) && BROWSER_AVAILABLE
+	setenv("QT_NO_GLIB", "1", true);
+#endif
+
 	QCoreApplication::addLibraryPath(".");
+
+#if __APPLE__
+	InstallNSApplicationSubclass();
+#endif
 
 	OBSApp program(argc, argv, profilerNameStore.get());
 	try {
@@ -1787,12 +1869,16 @@ static int run_program(fstream &logFile, int argc, char *argv[])
 
 		prof.Stop();
 
-		return program.exec();
+		ret = program.exec();
 
 	} catch (const char *error) {
 		blog(LOG_ERROR, "%s", error);
 		OBSErrorBox(nullptr, "%s", error);
 	}
+
+	if (restart)
+		QProcess::startDetached(qApp->arguments()[0],
+					qApp->arguments());
 
 	return ret;
 }
@@ -1803,8 +1889,7 @@ static int run_program(fstream &logFile, int argc, char *argv[])
 
 #define CRASH_MESSAGE                                                      \
 	"Woops, OBS has crashed!\n\nWould you like to copy the crash log " \
-	"to the clipboard?  (Crash logs will still be saved to the "       \
-	"%appdata%\\obs-studio\\crashes directory)"
+	"to the clipboard? The crash log will still be saved to:\n\n%s"
 
 static void main_crash_handler(const char *format, va_list args, void *param)
 {
@@ -1813,10 +1898,12 @@ static void main_crash_handler(const char *format, va_list args, void *param)
 	vsnprintf(text, MAX_CRASH_REPORT_SIZE, format, args);
 	text[MAX_CRASH_REPORT_SIZE - 1] = 0;
 
-	delete_oldest_file(true, "obs-studio/crashes");
+	string crashFilePath = "obs-studio/crashes";
 
-	string name = "obs-studio/crashes/Crash ";
-	name += GenerateTimeDateFilename("txt");
+	delete_oldest_file(true, crashFilePath.c_str());
+
+	string name = crashFilePath + "/";
+	name += "Crash " + GenerateTimeDateFilename("txt");
 
 	BPtr<char> path(GetConfigPathPtr(name.c_str()));
 
@@ -1834,7 +1921,26 @@ static void main_crash_handler(const char *format, va_list args, void *param)
 	file << text;
 	file.close();
 
-	int ret = MessageBoxA(NULL, CRASH_MESSAGE, "OBS has crashed!",
+	string pathString(path.Get());
+
+#ifdef _WIN32
+	std::replace(pathString.begin(), pathString.end(), '/', '\\');
+#endif
+
+	string absolutePath =
+		canonical(filesystem::path(pathString)).u8string();
+
+	size_t size = snprintf(nullptr, 0, CRASH_MESSAGE, absolutePath.c_str());
+
+	unique_ptr<char[]> message_buffer(new char[size + 1]);
+
+	snprintf(message_buffer.get(), size + 1, CRASH_MESSAGE,
+		 absolutePath.c_str());
+
+	string finalMessage =
+		string(message_buffer.get(), message_buffer.get() + size);
+
+	int ret = MessageBoxA(NULL, finalMessage.c_str(), "OBS has crashed!",
 			      MB_YESNO | MB_ICONERROR | MB_TASKMODAL);
 
 	if (ret == IDYES) {
@@ -1873,6 +1979,18 @@ static void load_debug_privilege(void)
 
 		AdjustTokenPrivileges(token, false, &tp, sizeof(tp), NULL,
 				      NULL);
+	}
+
+	if (!!LookupPrivilegeValue(NULL, SE_INC_BASE_PRIORITY_NAME, &val)) {
+		tp.PrivilegeCount = 1;
+		tp.Privileges[0].Luid = val;
+		tp.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED;
+
+		if (!AdjustTokenPrivileges(token, false, &tp, sizeof(tp), NULL,
+					   NULL)) {
+			blog(LOG_INFO, "Could not set privilege to "
+				       "increase GPU priority");
+		}
 	}
 
 	CloseHandle(token);
@@ -1939,7 +2057,7 @@ bool GetFileSafeName(const char *name, std::string &file)
 		return false;
 
 	wfile.resize(len);
-	os_utf8_to_wcs(name, base_len, &wfile[0], len);
+	os_utf8_to_wcs(name, base_len, &wfile[0], len + 1);
 
 	for (size_t i = wfile.size(); i > 0; i--) {
 		size_t im1 = i - 1;
@@ -1959,7 +2077,7 @@ bool GetFileSafeName(const char *name, std::string &file)
 		return false;
 
 	file.resize(len);
-	os_wcs_to_utf8(wfile.c_str(), wfile.size(), &file[0], len);
+	os_wcs_to_utf8(wfile.c_str(), wfile.size(), &file[0], len + 1);
 	return true;
 }
 

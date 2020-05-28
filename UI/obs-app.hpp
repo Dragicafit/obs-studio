@@ -80,6 +80,7 @@ private:
 	int sleepInhibitRefs = 0;
 
 	bool enableHotkeysInFocus = true;
+	bool enableHotkeysOutOfFocus = true;
 
 	std::deque<obs_frontend_translate_ui_cb> translatorHooks;
 
@@ -105,7 +106,13 @@ public:
 	void AppInit();
 	bool OBSInit();
 
-	void EnableInFocusHotkeys(bool enable);
+	void UpdateHotkeyFocusSetting(bool reset = true);
+	void DisableHotkeys();
+
+	inline bool HotkeysEnabledInFocus() const
+	{
+		return enableHotkeysInFocus;
+	}
 
 	inline QMainWindow *GetMainWindow() const { return mainWindow.data(); }
 
@@ -223,3 +230,4 @@ extern bool opt_studio_mode;
 extern bool opt_allow_opengl;
 extern bool opt_always_on_top;
 extern std::string opt_starting_scene;
+extern bool restart;
