@@ -35,7 +35,7 @@
 #include "media-io/audio-io.h"
 
 #include "obs.h"
-#include <util\config-file.h>
+#include <util/config-file.h>
 
 #define NUM_TEXTURES 2
 #define NUM_CHANNELS 3
