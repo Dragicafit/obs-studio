@@ -94,16 +94,24 @@ static inline bool pop_packet(struct obs_output *output, uint64_t t)
 		circlebuf_peek_front(&output->delay_data, &dd, sizeof(dd));
 		elapsed_time = (t - dd.ts);
 
-		output->delay_sec =
+		int64_t new_delay =
 			config_get_int(output->config, "Output", "DelaySec");
-		output->active_delay_ns =
-			(uint64_t)output->delay_sec * 1000000000ULL;
+
+		if (new_delay != output->delay_sec &&
+		    (output->del + 10 * SEC_TO_NSEC < t || output->del > t)) {
+			output->delay_sec = output->delay_sec + 9 < new_delay
+						    ? output->delay_sec + 9
+						    : new_delay;
+			output->active_delay_ns =
+				(uint64_t)output->delay_sec * SEC_TO_NSEC;
+			output->del = t;
+		}
 
 		if (preserve && output->reconnecting) {
 			output->active_delay_ns = elapsed_time;
 
-		} else if (elapsed_time > output->active_delay_ns +
-						  1000000000ULL &&
+		} else if (elapsed_time >
+				   output->active_delay_ns + SEC_TO_NSEC &&
 			   dd.msg == DELAY_MSG_PACKET) {
 			circlebuf_pop_front(&output->delay_data, NULL,
 					    sizeof(dd));
