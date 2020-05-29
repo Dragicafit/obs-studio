@@ -99,8 +99,8 @@ static inline bool pop_packet(struct obs_output *output, uint64_t t)
 
 		if (new_delay != output->delay_sec &&
 		    (output->del + 10 * SEC_TO_NSEC < t || output->del > t)) {
-			output->delay_sec = output->delay_sec + 9 < new_delay
-						    ? output->delay_sec + 9
+			output->delay_sec = output->delay_sec + 9ULL < new_delay
+						    ? output->delay_sec + 9ULL
 						    : new_delay;
 			output->active_delay_ns =
 				(uint64_t)output->delay_sec * SEC_TO_NSEC;
