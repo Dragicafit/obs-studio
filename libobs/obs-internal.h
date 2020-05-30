@@ -42,6 +42,9 @@
 #define MICROSECOND_DEN 1000000
 #define NUM_ENCODE_TEXTURES 3
 #define NUM_ENCODE_TEXTURE_FRAMES_TO_WAIT 1
+#ifndef SEC_TO_NSEC
+#define SEC_TO_NSEC 1000000000ULL
+#endif
 
 static inline int64_t packet_dts_usec(struct encoder_packet *packet)
 {
