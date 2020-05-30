@@ -963,7 +963,8 @@ struct obs_output {
 
 	uint64_t active_delay_ns;
 	encoded_callback_t delay_callback;
-	struct circlebuf delay_data; /* struct delay_data */
+	struct circlebuf delay_data;  /* struct delay_data */
+	struct circlebuf delay_data2; /* struct delay_data */
 	pthread_mutex_t delay_mutex;
 	uint32_t delay_sec;
 	uint32_t delay_flags;
@@ -976,6 +977,12 @@ struct obs_output {
 
 	float audio_data[MAX_AUDIO_CHANNELS][AUDIO_OUTPUT_FRAMES];
 	config_t *config;
+	uint64_t last_record;
+	bool record_first;
+	uint64_t last_read;
+	bool read_first;
+	bool reading;
+	bool count;
 };
 
 static inline void do_output_signal(struct obs_output *output,

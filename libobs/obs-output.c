@@ -126,6 +126,9 @@ obs_output_t *obs_output_create(const char *id, const char *name,
 
 	os_event_signal(output->stopping_event);
 	output->config = config;
+	output->record_first = true;
+	output->read_first = true;
+	output->reading = false;
 
 	if (!info) {
 		blog(LOG_ERROR, "Output ID '%s' not found", id);

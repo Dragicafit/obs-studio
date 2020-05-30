@@ -99,19 +99,59 @@ static inline bool pop_packet(struct obs_output *output, uint64_t t)
 		output->active_delay_ns =
 			(uint64_t)output->delay_sec * SEC_TO_NSEC;
 
-		if (preserve && output->reconnecting) {
-			output->active_delay_ns = elapsed_time;
-
-		} else if (elapsed_time >
-				   output->active_delay_ns + SEC_TO_NSEC &&
-			   dd.msg == DELAY_MSG_PACKET) {
+		if (elapsed_time > output->active_delay_ns + SEC_TO_NSEC &&
+		    dd.msg == DELAY_MSG_PACKET) {
 			circlebuf_pop_front(&output->delay_data, NULL,
 					    sizeof(dd));
 			del = true;
+			printf("non\n");
 		} else if (elapsed_time > output->active_delay_ns) {
 			circlebuf_pop_front(&output->delay_data, NULL,
 					    sizeof(dd));
+
+			if (!config_get_bool(output->config, "Output",
+					     "DelayEnable")) {
+				if (output->record_first) {
+					output->last_record = dd.ts;
+					output->record_first = false;
+					circlebuf_free(&output->delay_data2);
+					output->read_first = true;
+				}
+				struct delay_data dd2 = {0};
+
+				dd2.msg = dd.msg;
+				dd2.ts = dd.ts - output->last_record;
+				obs_encoder_packet_create_instance(&dd2.packet,
+								   &dd.packet);
+				circlebuf_push_back(&output->delay_data2, &dd2,
+						    sizeof(dd));
+			} else {
+				output->record_first = true;
+			}
 			popped = true;
+			//del = true;
+			output->count = (output->count + 1) % 60;
+			if (output->count == 1)
+				printf("%d\n", output->reading);
+			output->reading = false;
+		} else if (elapsed_time <
+				   output->active_delay_ns - SEC_TO_NSEC &&
+			   dd.msg == DELAY_MSG_PACKET && !output->reading) {
+			if (output->delay_data2.size) {
+				if (output->read_first) {
+					output->last_read = t;
+					output->read_first = false;
+					printf("reset\n");
+				}
+				circlebuf_pop_front(&output->delay_data2, &dd,
+						    sizeof(dd));
+				dd.ts += output->last_read;
+				dd.ts -= output->active_delay_ns;
+				circlebuf_push_front(&output->delay_data, &dd,
+						     sizeof(dd));
+				output->reading = true;
+				del = true;
+			}
 		}
 	}
 
@@ -122,7 +162,7 @@ static inline bool pop_packet(struct obs_output *output, uint64_t t)
 	if (popped)
 		process_delay_data(output, &dd);
 
-	return popped || del;
+	return del;
 }
 
 void process_delay(void *data, struct encoder_packet *packet)
