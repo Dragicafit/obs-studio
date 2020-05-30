@@ -977,6 +977,8 @@ struct obs_output {
 	float audio_data[MAX_AUDIO_CHANNELS][AUDIO_OUTPUT_FRAMES];
 	config_t *config;
 	uint64_t del;
+	int oui;
+	struct delay_data non;
 };
 
 static inline void do_output_signal(struct obs_output *output,

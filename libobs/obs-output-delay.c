@@ -97,29 +97,33 @@ static inline bool pop_packet(struct obs_output *output, uint64_t t)
 		int64_t new_delay =
 			config_get_int(output->config, "Output", "DelaySec");
 
-		if (new_delay != output->delay_sec &&
-		    (output->del + 10 * SEC_TO_NSEC < t || output->del > t)) {
-			output->delay_sec = output->delay_sec + 9ULL < new_delay
-						    ? output->delay_sec + 9ULL
-						    : new_delay;
-			output->active_delay_ns =
-				(uint64_t)output->delay_sec * SEC_TO_NSEC;
-			output->del = t;
-		}
-
-		if (preserve && output->reconnecting) {
-			output->active_delay_ns = elapsed_time;
-
-		} else if (elapsed_time >
-				   output->active_delay_ns + SEC_TO_NSEC &&
-			   dd.msg == DELAY_MSG_PACKET) {
+		if (elapsed_time > output->active_delay_ns) {
 			circlebuf_pop_front(&output->delay_data, NULL,
 					    sizeof(dd));
 			del = true;
-		} else if (elapsed_time > output->active_delay_ns) {
-			circlebuf_pop_front(&output->delay_data, NULL,
-					    sizeof(dd));
-			popped = true;
+			if (dd.msg == DELAY_MSG_PACKET) {
+				if (output->oui == 0) {
+					memset(&output->non, 0,
+					       sizeof output->non);
+
+					output->non.msg = DELAY_MSG_PACKET;
+					obs_encoder_packet_create_instance(
+						&output->non.packet,
+						&dd.packet);
+				} else if (output->oui == 30) {
+					output->non.ts = t + SEC_TO_NSEC;
+					circlebuf_push_front(
+						&output->delay_data,
+						&output->non,
+						sizeof output->non);
+					popped = true;
+				} else {
+					popped = true;
+				}
+				output->oui = (output->oui + 1) % 53;
+			} else {
+				popped = true;
+			}
 		}
 	}
 
