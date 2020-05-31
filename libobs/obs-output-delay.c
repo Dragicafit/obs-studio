@@ -35,6 +35,7 @@ static inline void push_packet(struct obs_output *output,
 
 	dd.msg = DELAY_MSG_PACKET;
 	dd.ts = t;
+	dd.copy = false;
 	obs_encoder_packet_create_instance(&dd.packet, packet);
 
 	pthread_mutex_lock(&output->delay_mutex);
@@ -97,41 +98,136 @@ static inline bool pop_packet(struct obs_output *output, uint64_t t)
 		int64_t new_delay =
 			config_get_int(output->config, "Output", "DelaySec");
 
-		if (elapsed_time > output->active_delay_ns) {
+		if (elapsed_time > output->active_delay_ns + SEC_TO_NSEC &&
+		    dd.msg == DELAY_MSG_PACKET) {
+			circlebuf_pop_front(&output->delay_data, NULL,
+					    sizeof(dd));
+			del = true;
+		} else if (elapsed_time > output->active_delay_ns) {
 			circlebuf_pop_front(&output->delay_data, NULL,
 					    sizeof(dd));
 			if (dd.msg == DELAY_MSG_PACKET) {
-				if (output->oui < 100) {
-					if (dd.packet.type ==
-					    OBS_OUTPUT_AUDIO) {
-						struct delay_data dd2 = {0};
+				if (!dd.copy) {
+					if (output->oui < 600) {
+						if (dd.packet.type ==
+						    OBS_ENCODER_AUDIO) {
+							printf("record\n");
+							if (output->record_first) {
+								printf("first\n");
+								output->last_record =
+									dd.ts;
+								output->record_first =
+									false;
+								circlebuf_free(
+									&output->delay_data2);
+								output->read_first =
+									true;
+							}
+							struct delay_data dd2 = {
+								0};
 
-						dd2.msg = DELAY_MSG_PACKET;
-						obs_encoder_packet_create_instance(
-							&dd2.packet,
-							&dd.packet);
+							dd2.msg = dd.msg;
+							dd2.ts =
+								dd.ts -
+								output->last_record;
+							dd2.copy = true;
+							printf("%llu\n",
+							       dd2.ts);
+							obs_encoder_packet_create_instance(
+								&dd2.packet,
+								&dd.packet);
+							dd2.packet.dts -=
+								output->last_record /
+								1000000;
+							dd2.packet.pts -=
+								output->last_record /
+								1000000;
+							dd2.packet.dts_usec -=
+								output->last_record /
+								1000;
+							dd2.packet
+								.sys_dts_usec -=
+								output->last_record /
+								1000;
 
-						circlebuf_push_back(
-							&output->delay_data2,
-							&dd2, sizeof(dd2));
+							circlebuf_push_back(
+								&output->delay_data2,
+								&dd2,
+								sizeof(dd2));
+						}
+						popped = true;
+					} else {
+						if (dd.packet.type ==
+						    OBS_ENCODER_AUDIO) {
+							if (output->delay_data2
+								    .size) {
+								printf("reading\n");
+								if (output->read_first) {
+									output->last_read =
+										t;
+									output->read_first =
+										false;
+									printf("first\n");
+								}
+								struct delay_data
+									dd2 = {0};
+								circlebuf_pop_front(
+									&output->delay_data2,
+									&dd2,
+									sizeof(dd2));
+								dd2.ts +=
+									output->last_read;
+								dd2.ts -=
+									output->active_delay_ns;
+								dd2.packet.dts +=
+									output->last_read /
+									1000000;
+								dd2.packet.dts -=
+									output->active_delay_ns /
+									1000000;
+								dd2.packet.pts +=
+									output->last_read /
+									1000000;
+								dd2.packet.pts -=
+									output->active_delay_ns /
+									1000000;
+								dd2.packet
+									.dts_usec +=
+									output->last_read /
+									1000;
+								dd2.packet
+									.dts_usec -=
+									output->active_delay_ns /
+									1000;
+								dd2.packet
+									.sys_dts_usec +=
+									output->last_read /
+									1000;
+								dd2.packet
+									.sys_dts_usec -=
+									output->active_delay_ns /
+									1000;
+								circlebuf_push_front(
+									&output->delay_data,
+									&dd2,
+									sizeof dd2);
+								printf("%llu\n",
+								       t - dd2.ts);
+								printf("%llu\n",
+								       output->active_delay_ns);
+								printf("\n");
+							}
+						} else {
+							popped = true;
+						}
+						output->record_first = true;
 						del = true;
 					}
-				} else if (output->oui > 300) {
-					if (output->delay_data2.size) {
-						struct delay_data dd2 = {0};
-						circlebuf_pop_front(
-							&output->delay_data2,
-							&dd2, sizeof(dd2));
-						dd2.ts = t;
-						circlebuf_push_front(
-							&output->delay_data,
-							&dd2, sizeof dd2);
-						del = true;
-					}
+					output->oui = (output->oui + 1) % 1000;
 				} else {
-					popped = true;
+					printf("is reading\n");
+					//popped = true;
 				}
-				output->oui = (output->oui + 1) % 530;
 			} else {
 				popped = true;
 			}
@@ -141,7 +237,6 @@ static inline bool pop_packet(struct obs_output *output, uint64_t t)
 	pthread_mutex_unlock(&output->delay_mutex);
 
 	/* ------------------------------------------------ */
-
 	if (popped)
 		process_delay_data(output, &dd);
 
@@ -173,6 +268,7 @@ bool obs_output_delay_start(obs_output_t *output)
 	struct delay_data dd = {
 		.msg = DELAY_MSG_START,
 		.ts = os_gettime_ns(),
+		.copy = false,
 	};
 
 	if (!delay_active(output)) {
@@ -207,6 +303,7 @@ void obs_output_delay_stop(obs_output_t *output)
 	struct delay_data dd = {
 		.msg = DELAY_MSG_STOP,
 		.ts = os_gettime_ns(),
+		.copy = false,
 	};
 
 	pthread_mutex_lock(&output->delay_mutex);

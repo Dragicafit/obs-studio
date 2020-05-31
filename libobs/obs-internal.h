@@ -860,6 +860,7 @@ struct delay_data {
 	enum delay_msg msg;
 	uint64_t ts;
 	struct encoder_packet packet;
+	bool copy;
 };
 
 typedef void (*encoded_callback_t)(void *data, struct encoder_packet *packet);
@@ -979,6 +980,10 @@ struct obs_output {
 	config_t *config;
 	uint64_t del;
 	int oui;
+	uint64_t last_record;
+	bool record_first;
+	uint64_t last_read;
+	bool read_first;
 };
 
 static inline void do_output_signal(struct obs_output *output,
