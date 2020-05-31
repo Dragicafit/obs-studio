@@ -100,27 +100,38 @@ static inline bool pop_packet(struct obs_output *output, uint64_t t)
 		if (elapsed_time > output->active_delay_ns) {
 			circlebuf_pop_front(&output->delay_data, NULL,
 					    sizeof(dd));
-			del = true;
 			if (dd.msg == DELAY_MSG_PACKET) {
-				if (output->oui == 0) {
-					memset(&output->non, 0,
-					       sizeof output->non);
+				if (output->oui < 100) {
+					if (dd.packet.type ==
+					    OBS_OUTPUT_AUDIO) {
+						struct delay_data dd2 = {0};
 
-					output->non.msg = DELAY_MSG_PACKET;
-					obs_encoder_packet_create_instance(
-						&output->non.packet,
-						&dd.packet);
-				} else if (output->oui == 30) {
-					output->non.ts = t + SEC_TO_NSEC;
-					circlebuf_push_front(
-						&output->delay_data,
-						&output->non,
-						sizeof output->non);
-					popped = true;
+						dd2.msg = DELAY_MSG_PACKET;
+						obs_encoder_packet_create_instance(
+							&dd2.packet,
+							&dd.packet);
+
+						circlebuf_push_back(
+							&output->delay_data2,
+							&dd2, sizeof(dd2));
+						del = true;
+					}
+				} else if (output->oui > 300) {
+					if (output->delay_data2.size) {
+						struct delay_data dd2 = {0};
+						circlebuf_pop_front(
+							&output->delay_data2,
+							&dd2, sizeof(dd2));
+						dd2.ts = t;
+						circlebuf_push_front(
+							&output->delay_data,
+							&dd2, sizeof dd2);
+						del = true;
+					}
 				} else {
 					popped = true;
 				}
-				output->oui = (output->oui + 1) % 53;
+				output->oui = (output->oui + 1) % 530;
 			} else {
 				popped = true;
 			}
