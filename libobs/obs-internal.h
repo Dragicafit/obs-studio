@@ -860,6 +860,7 @@ struct delay_data {
 	enum delay_msg msg;
 	uint64_t ts;
 	struct encoder_packet packet;
+	bool copy;
 };
 
 typedef void (*encoded_callback_t)(void *data, struct encoder_packet *packet);
@@ -963,7 +964,8 @@ struct obs_output {
 
 	uint64_t active_delay_ns;
 	encoded_callback_t delay_callback;
-	struct circlebuf delay_data; /* struct delay_data */
+	struct circlebuf delay_data;  /* struct delay_data */
+	struct circlebuf delay_data2; /* struct delay_data */
 	pthread_mutex_t delay_mutex;
 	uint32_t delay_sec;
 	uint32_t delay_flags;
@@ -977,6 +979,14 @@ struct obs_output {
 	float audio_data[MAX_AUDIO_CHANNELS][AUDIO_OUTPUT_FRAMES];
 	config_t *config;
 	uint64_t del;
+	uint64_t last_record;
+	bool record_first[2];
+	uint64_t last_read;
+	bool read_first[2];
+	int64_t last_record_dts[2];
+	int64_t last_read_dts[2];
+	int64_t diff_dts[2];
+	int64_t last_diff_dts[2];
 };
 
 static inline void do_output_signal(struct obs_output *output,
@@ -989,6 +999,9 @@ static inline void do_output_signal(struct obs_output *output,
 }
 
 extern void process_delay(void *data, struct encoder_packet *packet);
+extern void save_packet(struct obs_output *output, struct delay_data dd);
+extern void load_packet(struct obs_output *output, struct delay_data dd,
+			bool *del, uint64_t t);
 extern void obs_output_cleanup_delay(obs_output_t *output);
 extern bool obs_output_delay_start(obs_output_t *output);
 extern void obs_output_delay_stop(obs_output_t *output);
