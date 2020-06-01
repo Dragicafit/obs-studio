@@ -35,6 +35,7 @@ static inline void push_packet(struct obs_output *output,
 
 	dd.msg = DELAY_MSG_PACKET;
 	dd.ts = t;
+	dd.copy = false;
 	obs_encoder_packet_create_instance(&dd.packet, packet);
 
 	pthread_mutex_lock(&output->delay_mutex);
@@ -109,48 +110,121 @@ static inline bool pop_packet(struct obs_output *output, uint64_t t)
 			circlebuf_pop_front(&output->delay_data, NULL,
 					    sizeof(dd));
 
-			if (!config_get_bool(output->config, "Output",
-					     "DelayEnable")) {
-				if (output->record_first) {
-					output->last_record = dd.ts;
-					output->record_first = false;
-					circlebuf_free(&output->delay_data2);
-					output->read_first = true;
-				}
-				struct delay_data dd2 = {0};
+			if (dd.msg == DELAY_MSG_PACKET) {
+				if (!dd.copy) {
+					dd.packet.dts +=
+						output->diff_dts[dd.packet.type];
+					dd.packet.pts +=
+						output->diff_dts[dd.packet.type];
+					if (!config_get_bool(output->config,
+							     "Output",
+							     "DelayEnable")) {
+						if (output->record_first[0] ||
+						    output->record_first[1]) {
+							printf("record\n");
+							output->last_record =
+								dd.ts;
+							output->last_record_dts
+								[dd.packet.type] =
+								dd.packet.dts;
+							output->record_first
+								[dd.packet.type] =
+								false;
+							circlebuf_free(
+								&output->delay_data2);
+							output->read_first[0] =
+								true;
+							output->read_first[1] =
+								true;
+						}
+						if (!output->record_first[0] &&
+						    !output->record_first[1]) {
+							struct delay_data dd2 = {
+								0};
 
-				dd2.msg = dd.msg;
-				dd2.ts = dd.ts - output->last_record;
-				obs_encoder_packet_create_instance(&dd2.packet,
-								   &dd.packet);
-				circlebuf_push_back(&output->delay_data2, &dd2,
-						    sizeof(dd));
-			} else {
-				output->record_first = true;
+							dd2.msg = dd.msg;
+							dd2.ts =
+								dd.ts -
+								output->last_record;
+							dd2.copy = true;
+							obs_encoder_packet_create_instance(
+								&dd2.packet,
+								&dd.packet);
+							dd2.packet.dts_usec -=
+								output->last_record /
+								1000;
+							dd2.packet.dts -=
+								output->last_record_dts
+									[dd2.packet
+										 .type];
+							dd2.packet.pts -=
+								output->last_record_dts
+									[dd2.packet
+										 .type];
+							dd2.packet
+								.sys_dts_usec -=
+								output->last_record /
+								1000;
+							circlebuf_push_back(
+								&output->delay_data2,
+								&dd2,
+								sizeof(dd));
+						}
+					} else {
+						output->record_first[0] = true;
+						output->record_first[1] = true;
+					}
+				}
 			}
 			popped = true;
-			//del = true;
-			output->count = (output->count + 1) % 60;
-			if (output->count == 1)
-				printf("%d\n", output->reading);
-			output->reading = false;
 		} else if (elapsed_time <
 				   output->active_delay_ns - SEC_TO_NSEC &&
-			   dd.msg == DELAY_MSG_PACKET && !output->reading) {
+			   dd.msg == DELAY_MSG_PACKET && !dd.copy) {
 			if (output->delay_data2.size) {
-				if (output->read_first) {
-					output->last_read = t;
-					output->read_first = false;
-					printf("reset\n");
+				if (output->read_first[0] ||
+				    output->read_first[1]) {
+					output->last_read =
+						t - output->active_delay_ns;
+					output->last_read_dts[dd.packet.type] =
+						dd.packet.dts +
+						output->diff_dts[dd.packet.type];
+					output->last_diff_dts[dd.packet.type] =
+						output->diff_dts[dd.packet.type];
+					output->read_first[dd.packet.type] =
+						false;
+					printf("reading\n");
+					circlebuf_pop_front(&output->delay_data,
+							    NULL, sizeof(dd));
+					del = true;
 				}
-				circlebuf_pop_front(&output->delay_data2, &dd,
-						    sizeof(dd));
-				dd.ts += output->last_read;
-				dd.ts -= output->active_delay_ns;
-				circlebuf_push_front(&output->delay_data, &dd,
-						     sizeof(dd));
-				output->reading = true;
-				del = true;
+				if (!output->read_first[0] &&
+				    !output->read_first[1]) {
+					struct delay_data dd2 = {0};
+					circlebuf_pop_front(
+						&output->delay_data2, &dd2,
+						sizeof(dd2));
+					dd2.ts += output->last_read;
+
+					output->diff_dts[dd2.packet.type] =
+						dd2.packet.dts +
+						output->last_diff_dts
+							[dd2.packet.type];
+					dd2.packet.dts +=
+						output->last_read_dts
+							[dd2.packet.type];
+					dd2.packet.pts +=
+						output->last_read_dts
+							[dd2.packet.type];
+
+					dd2.packet.dts_usec +=
+						output->last_read / 1000;
+					dd2.packet.sys_dts_usec +=
+						output->last_read / 1000;
+					circlebuf_push_front(
+						&output->delay_data, &dd2,
+						sizeof dd2);
+					del = true;
+				}
 			}
 		}
 	}
@@ -159,10 +233,14 @@ static inline bool pop_packet(struct obs_output *output, uint64_t t)
 
 	/* ------------------------------------------------ */
 
-	if (popped)
+	if (popped) {
 		process_delay_data(output, &dd);
+		if (dd.packet.type == 1)
+			printf("%d\t%d\t%d\t%d\n", dd.packet.type,
+			       dd.packet.pts, dd.packet.dts, dd.copy);
+	}
 
-	return del;
+	return popped || del;
 }
 
 void process_delay(void *data, struct encoder_packet *packet)
@@ -190,6 +268,7 @@ bool obs_output_delay_start(obs_output_t *output)
 	struct delay_data dd = {
 		.msg = DELAY_MSG_START,
 		.ts = os_gettime_ns(),
+		.copy = false,
 	};
 
 	if (!delay_active(output)) {
@@ -224,6 +303,7 @@ void obs_output_delay_stop(obs_output_t *output)
 	struct delay_data dd = {
 		.msg = DELAY_MSG_STOP,
 		.ts = os_gettime_ns(),
+		.copy = false,
 	};
 
 	pthread_mutex_lock(&output->delay_mutex);

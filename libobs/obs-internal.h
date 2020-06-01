@@ -860,6 +860,7 @@ struct delay_data {
 	enum delay_msg msg;
 	uint64_t ts;
 	struct encoder_packet packet;
+	bool copy;
 };
 
 typedef void (*encoded_callback_t)(void *data, struct encoder_packet *packet);
@@ -978,11 +979,13 @@ struct obs_output {
 	float audio_data[MAX_AUDIO_CHANNELS][AUDIO_OUTPUT_FRAMES];
 	config_t *config;
 	uint64_t last_record;
-	bool record_first;
+	bool record_first[2];
 	uint64_t last_read;
-	bool read_first;
-	bool reading;
-	bool count;
+	bool read_first[2];
+	int64_t last_record_dts[2];
+	int64_t last_read_dts[2];
+	int64_t diff_dts[2];
+	int64_t last_diff_dts[2];
 };
 
 static inline void do_output_signal(struct obs_output *output,
