@@ -981,9 +981,11 @@ struct obs_output {
 	uint64_t del;
 	int oui;
 	uint64_t last_record;
-	bool record_first;
+	bool record_first[2];
 	uint64_t last_read;
-	bool read_first;
+	bool read_first[2];
+	int64_t last_record_dts[2];
+	int64_t last_read_dts[2];
 };
 
 static inline void do_output_signal(struct obs_output *output,
