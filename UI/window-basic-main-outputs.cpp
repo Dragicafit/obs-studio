@@ -786,6 +786,7 @@ bool SimpleOutput::StartStreaming(obs_service_t *service)
 		config_get_uint(main->Config(), "Output", "MaxRetries");
 	bool useDelay =
 		config_get_bool(main->Config(), "Output", "DelayEnable");
+	config_set_bool(main->Config(), "Output", "BufferEnable", false);
 	int delaySec = config_get_int(main->Config(), "Output", "DelaySec");
 	bool preserveDelay =
 		config_get_bool(main->Config(), "Output", "DelayPreserve");
@@ -1629,6 +1630,7 @@ bool AdvancedOutput::StartStreaming(obs_service_t *service)
 	int maxRetries = config_get_int(main->Config(), "Output", "MaxRetries");
 	bool useDelay =
 		config_get_bool(main->Config(), "Output", "DelayEnable");
+	config_set_bool(main->Config(), "Output", "BufferEnable", false);
 	int delaySec = config_get_int(main->Config(), "Output", "DelaySec");
 	bool preserveDelay =
 		config_get_bool(main->Config(), "Output", "DelayPreserve");

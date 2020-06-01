@@ -152,7 +152,7 @@ void save_packet(struct obs_output *output, struct delay_data dd)
 {
 	if (dd.msg != DELAY_MSG_PACKET)
 		return;
-	if (!config_get_bool(output->config, "Output", "DelayEnable")) {
+	if (config_get_bool(output->config, "Output", "BufferEnable")) {
 		if (output->record_first[0] || output->record_first[1]) {
 			printf("record\n");
 			output->last_record = dd.ts;

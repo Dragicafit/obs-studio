@@ -1304,6 +1304,7 @@ bool OBSBasic::InitBasicConfigDefaults()
 				  "%CCYY-%MM-%DD %hh-%mm-%ss");
 
 	config_set_default_bool(basicConfig, "Output", "DelayEnable", false);
+	config_set_default_bool(basicConfig, "Output", "BufferEnable", false);
 	config_set_default_uint(basicConfig, "Output", "DelaySec", 20);
 	config_set_default_bool(basicConfig, "Output", "DelayPreserve", true);
 

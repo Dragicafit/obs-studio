@@ -501,6 +501,7 @@ OBSBasicSettings::OBSBasicSettings(QWidget *parent)
 	HookWidget(ui->simpleRBPrefix,       EDIT_CHANGED,   ADV_CHANGED);
 	HookWidget(ui->simpleRBSuffix,       EDIT_CHANGED,   ADV_CHANGED);
 	HookWidget(ui->streamDelayEnable,    CHECK_CHANGED,  ADV_CHANGED);
+	HookWidget(ui->streamBufferEnable,    CHECK_CHANGED,  ADV_CHANGED);
 	HookWidget(ui->streamDelaySec,       SCROLL_CHANGED, ADV_CHANGED);
 	HookWidget(ui->streamDelayPreserve,  CHECK_CHANGED,  ADV_CHANGED);
 	HookWidget(ui->reconnectEnable,      CHECK_CHANGED,  ADV_CHANGED);
@@ -2349,6 +2350,8 @@ void OBSBasicSettings::LoadAdvancedSettings()
 #endif
 	bool enableDelay =
 		config_get_bool(main->Config(), "Output", "DelayEnable");
+	bool enableBuffer =
+		config_get_bool(main->Config(), "Output", "BufferEnable");
 	int delaySec = config_get_int(main->Config(), "Output", "DelaySec");
 	bool preserveDelay =
 		config_get_bool(main->Config(), "Output", "DelayPreserve");
@@ -2399,6 +2402,7 @@ void OBSBasicSettings::LoadAdvancedSettings()
 	ui->streamDelaySec->setValue(delaySec);
 	ui->streamDelayPreserve->setChecked(preserveDelay);
 	ui->streamDelayEnable->setChecked(enableDelay);
+	ui->streamBufferEnable->setChecked(enableBuffer);
 	ui->autoRemux->setChecked(autoRemux);
 	ui->dynBitrate->setChecked(dynBitrate);
 
@@ -3097,6 +3101,7 @@ void OBSBasicSettings::SaveAdvancedSettings()
 	SaveEdit(ui->simpleRBSuffix, "SimpleOutput", "RecRBSuffix");
 	SaveCheckBox(ui->overwriteIfExists, "Output", "OverwriteIfExists");
 	SaveCheckBox(ui->streamDelayEnable, "Output", "DelayEnable");
+	SaveCheckBox(ui->streamBufferEnable, "Output", "BufferEnable");
 	SaveSpinBox(ui->streamDelaySec, "Output", "DelaySec");
 	SaveCheckBox(ui->streamDelayPreserve, "Output", "DelayPreserve");
 	SaveCheckBox(ui->reconnectEnable, "Output", "Reconnect");
