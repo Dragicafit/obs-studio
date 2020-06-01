@@ -998,6 +998,7 @@ static inline void do_output_signal(struct obs_output *output,
 }
 
 extern void process_delay(void *data, struct encoder_packet *packet);
+extern void save_packet(struct obs_output *output, struct delay_data dd);
 extern void obs_output_cleanup_delay(obs_output_t *output);
 extern bool obs_output_delay_start(obs_output_t *output);
 extern void obs_output_delay_stop(obs_output_t *output);

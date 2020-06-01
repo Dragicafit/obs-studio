@@ -109,62 +109,13 @@ static inline bool pop_packet(struct obs_output *output, uint64_t t)
 		    dd.msg == DELAY_MSG_PACKET) {
 			circlebuf_pop_front(&output->delay_data, NULL,
 					    sizeof(dd));
+			save_packet(output, dd);
 			del = true;
 			printf("non\n");
 		} else if (elapsed_time > output->active_delay_ns) {
 			circlebuf_pop_front(&output->delay_data, NULL,
 					    sizeof(dd));
-
-			if (dd.msg == DELAY_MSG_PACKET) {
-				if (!config_get_bool(output->config, "Output",
-						     "DelayEnable")) {
-					if (output->record_first[0] ||
-					    output->record_first[1]) {
-						printf("record\n");
-						output->last_record = dd.ts;
-						output->last_record_dts
-							[dd.packet.type] =
-							dd.packet.dts;
-						output->record_first
-							[dd.packet.type] =
-							false;
-						circlebuf_free(
-							&output->delay_data2);
-						output->read_first[0] = true;
-						output->read_first[1] = true;
-					}
-					if (!output->record_first[0] &&
-					    !output->record_first[1]) {
-						struct delay_data dd2 = {0};
-
-						dd2.msg = dd.msg;
-						dd2.ts = dd.ts -
-							 output->last_record;
-						dd2.copy = true;
-						obs_encoder_packet_create_instance(
-							&dd2.packet,
-							&dd.packet);
-						dd2.packet.dts_usec -=
-							output->last_record /
-							1000;
-						dd2.packet.dts -=
-							output->last_record_dts
-								[dd2.packet.type];
-						dd2.packet.pts -=
-							output->last_record_dts
-								[dd2.packet.type];
-						dd2.packet.sys_dts_usec -=
-							output->last_record /
-							1000;
-						circlebuf_push_back(
-							&output->delay_data2,
-							&dd2, sizeof(dd));
-					}
-				} else {
-					output->record_first[0] = true;
-					output->record_first[1] = true;
-				}
-			}
+			save_packet(output, dd);
 			popped = true;
 		} else if (elapsed_time <
 				   output->active_delay_ns - SEC_TO_NSEC &&
@@ -229,6 +180,48 @@ static inline bool pop_packet(struct obs_output *output, uint64_t t)
 	}
 
 	return popped || del;
+}
+
+void save_packet(struct obs_output *output, struct delay_data dd)
+{
+	if (dd.msg == DELAY_MSG_PACKET) {
+		if (!config_get_bool(output->config, "Output", "DelayEnable")) {
+			if (output->record_first[0] ||
+			    output->record_first[1]) {
+				printf("record\n");
+				output->last_record = dd.ts;
+				output->last_record_dts[dd.packet.type] =
+					dd.packet.dts;
+				output->record_first[dd.packet.type] = false;
+				circlebuf_free(&output->delay_data2);
+				output->read_first[0] = true;
+				output->read_first[1] = true;
+			}
+			if (!output->record_first[0] &&
+			    !output->record_first[1]) {
+				struct delay_data dd2 = {0};
+
+				dd2.msg = dd.msg;
+				dd2.ts = dd.ts - output->last_record;
+				dd2.copy = true;
+				obs_encoder_packet_create_instance(&dd2.packet,
+								   &dd.packet);
+				dd2.packet.dts_usec -=
+					output->last_record / 1000;
+				dd2.packet.dts -=
+					output->last_record_dts[dd2.packet.type];
+				dd2.packet.pts -=
+					output->last_record_dts[dd2.packet.type];
+				dd2.packet.sys_dts_usec -=
+					output->last_record / 1000;
+				circlebuf_push_back(&output->delay_data2, &dd2,
+						    sizeof(dd));
+			}
+		} else {
+			output->record_first[0] = true;
+			output->record_first[1] = true;
+		}
+	}
 }
 
 void process_delay(void *data, struct encoder_packet *packet)
